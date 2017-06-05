@@ -8,8 +8,7 @@ $CHSPATH/run_callHotspotsPipeline \
  --name callHotspotsTest \
  --out $CHSPATH/unitTest/output
 
-
-if [ -f $CHSPATH/unitTest/output/callHotspotsTest_peaks.bedgraph ]; then
+if [ `wc -l <$CHSPATH/unitTest/output/callHotspotsTest_peaks.bedgraph` -ge 100 ]; then
     echo "Hotspots called successfully !!"  
 else
 	echo "**** FAIL **** Something went wrong !!"  
