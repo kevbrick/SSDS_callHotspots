@@ -1,1 +1,0 @@
-java -jar $PICARDJAR SortSam SO=queryname I=IgG.bam O=/lscratch/$SLURM_JOBID/IgG.bam VALIDATION_STRINGENCY=LENIENT ;java -jar $PICARDJAR SamToFastq I=/lscratch/$SLURM_JOBID/IgG.bam F=.//IgG.R1.fastq F2=.//IgG.R2.fastq VALIDATION_STRINGENCY=LENIENT
