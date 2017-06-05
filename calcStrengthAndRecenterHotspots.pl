@@ -1,0 +1,592 @@
+#!/usr/bin/perl
+use strict;
+use List::Util qw/max min/;
+use File::Temp qw/ tempfile tempdir /;
+use Getopt::Long;
+use Statistics::Descriptive;
+use Math::Round;
+use CHS_pipeline;
+
+GetOptions ('hs=s' 	    => \(my $inbed),
+            'frag=s'  	=> \(my $fragFile),
+			'input=s'   => \(my $inputFile),
+			'NCIS=s'   	=> \(my $NCIS),
+			'v+'    	=> \(my $verbose),
+			'noRC+'  	=> \(my $doNotReCenter),
+			'nt+'   	=> \(my $noTmp),
+			'ac+'   	=> \(my $altCenter),
+			'noCheck+'	=> \(my $noCheck),
+			'h+'    	=> \(my $help),
+			'help+' 	=> \(my $helpMe),
+            'out=s' 	=> \(my $out));
+
+## Show Help
+if ($help || $helpMe){
+	showHELP();
+}
+
+my (%hotspots,$NCISfactor);
+
+## Check ARGS
+showHELP("Hotspot bed file required (--hs)")    	  	unless ($inbed);
+showHELP("Hotspot bed file does not exist ($inbed)")    	unless (-e $inbed);
+showHELP("ssDNA fragments bed file required (--frag)")  	unless ($fragFile);
+showHELP("ssDNA fragments bed file does not exist ($fragFile)") unless (-e $fragFile);
+
+my ($CHSPATH,$CHSBEDTOOLSPATH,$CHSMACSPATH,$CHSNCISPATH,$CHSTMPPATH) = CHS_pipeline::genPaths();
+
+my $bedtoolsBin = $CHSBEDTOOLSPATH.'/bedtools';
+showHELP("bedtools binary NOT found. Please place it on your PATH.") unless (-e $bedtoolsBin);
+
+my $tempFolder = $ENV{TMPPATH}?$ENV{TMPPATH}:"/tmp";
+
+## Make output files
+unless ($out){$out = $inbed; $out =~ s/^(.+)\.\S+$/$1.normStrength.out/};
+
+my $outBG  	= $out; $outBG =~ s/^(.+)\.\S+$/$1.bedgraph/;
+my $outTab  = $out; $outTab =~ s/^(.+)\.\S+$/$1.tab/;
+
+my ($tempFlanks,$hFlanks) = genTempFile();
+my ($tempHS,$temphHS)     = genTempFile();
+
+$tempFlanks = 'tempFlanks.bed' if ($noTmp);
+$tempHS     = 'tempHS.bed' if ($noTmp);
+
+## Get line count from ssDNA fragments bed file
+my $lc = lineCount($fragFile);
+
+## Get NCIS normalization factor (if used)
+$NCISfactor = getNCISfactor($NCIS) if ($NCIS && $inputFile);
+
+## check that peaks and frags are sorted by -k1,1 -k2n,2n
+## if not, the $inbed and $fragFile are directed to temp files with sorted data
+my ($tfX1,$tfhX1) = genTempFile();
+my ($tfX2,$tfhX2) = genTempFile();
+($inbed,$fragFile) = checkAndSort($inbed,$fragFile,$tfX1,$tfX2) unless ($noCheck);
+
+## Recenter hotspots (to $tempHS)
+unless ($doNotReCenter){
+	recenterPeaks($tempHS,$inbed,$fragFile);
+}else{
+	system("cut -f1-3 $inbed >$tempHS");
+}
+
+## Create temporary BED file of hotspot flank regions
+makeFlanksFile($tempHS,$tempFlanks);
+
+## Generate hotspot coverage
+genCoverage($tempFlanks,$fragFile,\%hotspots);
+
+## Output hotspots file
+printHS(\%hotspots,$lc);
+
+################################################################################
+sub genTempFile{
+	my ($t,$tmpdir) = @_;
+	
+	$tmpdir = $CHSTMPPATH;
+	$tmpdir .= '/dmcRC_r'.(int(rand()*1000000000000));
+
+	system("mkdir $tmpdir");
+
+	my $template = (($tmpdir eq '.')?'':$tmpdir.'/').(defined($t)?$t:'tmp_dmcRC_XXXXXXXXX');
+	my ($fh, $clNm) = tempfile($template);
+
+	return ($clNm,$tmpdir,$fh);
+}
+
+################################################################################
+sub sysAndPrint {
+	my ($cmd,$printMe,$noRun) = @_;
+	print STDERR "$cmd\n" if ($printMe);
+	system($cmd) unless ($noRun);
+}
+
+################################################################################
+sub checkAndSort{
+    my ($coPeaks,$coTags,$tfPk,$tfTag) = @_;
+    
+    my $coPeakData  =`sort -k1,1 -k2n,2n -c $coPeaks 2>&1`;
+    if ($coPeakData){
+	sysAndPrint("sort -k1,1 -k2n,2n $coPeaks >$tfPk",1);
+	$coPeaks = $tfPk;
+    }
+    
+    my $coTagData =`sort -k1,1 -k2n,2n -c $coTags 2>&1`;
+    if ($coTagData){
+	sysAndPrint("sort -k1,1 -k2n,2n $coTags >$tfTag",1);
+	$coTags = $tfTag;
+    }
+
+    return($coPeaks,$coTags);
+}
+################################################################################
+sub recenterPeaks{
+    my ($outFile,$rcPeaks,$rcTags,$rcType) = @_;
+    
+    my ($tempOut,$tempOutFh) = genTempFile();
+    $tempOut = 'tempOut.bed' if ($noTmp);
+    open OUT, '>', $tempOut;
+
+    my ($tempHS3Col,$temphHS3Col) = genTempFile();
+    $tempHS3Col = 't3Col.bed' if ($noTmp);
+
+    system("cut -f1-3 $rcPeaks >$tempHS3Col");
+    
+    my (@hsArr,%allHSCheck); 
+    open TMPHS, $tempHS3Col;
+    while (<TMPHS>){
+		chomp;
+		$_ =~ s/(\s|\t)+(\S)/:$2/g;
+		push @hsArr, join(":",$_); 
+		$allHSCheck{join(":",$_)}->{val}++; 
+    }
+    close TMPHS; 
+
+    my $cmd = "$bedtoolsBin intersect -sorted -a $rcTags -b $tempHS3Col -wo";
+    open my $PIPE, '-|', $cmd;
+    
+    my (%lastHS,%hs,@pos,@neg);
+    my ($cs,$from,$to,%hsDone);
+    
+    while (<$PIPE>){
+	
+        my @F = split(/\t/,$_);
+        ($cs,$from,$to) = ($F[0],$F[1],$F[2]);
+	
+	## control for some odd PE reads.
+	next if ($F[2]-$F[1] > 1000);
+	
+        $hs{name} = join(":",$F[6],$F[7],$F[8]);
+	$hs{cs}   = $F[6];
+	$hs{from} = $F[7];
+	$hs{to}   = $F[8];
+	
+        if ($lastHS{name}){
+            if ($hs{name} ne $lastHS{name}){
+	        printRecenteredHS(\@pos,\@neg,$lastHS{cs},$lastHS{from},$lastHS{to}) unless ($hsDone{$hs{name}}++);
+		$allHSCheck{$lastHS{name}}->{'OK'}++;
+                @pos = (); @neg = ();                
+            }
+            
+	    my $arr = (($F[5] eq '+')?\@pos:\@neg);
+
+            for my $nt(max($F[1],$hs{from})..min($F[2],$hs{to})){
+                push @$arr, $nt;
+            }    
+        }
+        %lastHS = %hs;
+    }
+
+    printRecenteredHS(\@pos,\@neg,$lastHS{cs},$lastHS{from},$lastHS{to},$altCenter);
+    $allHSCheck{$lastHS{name}}->{'OK'}++;
+
+    for my $kH (keys(%allHSCheck)){
+	my ($kCS,$kFrom,$kTo) = split(/:/,$kH);
+	print OUT join("\t",$kCS,$kFrom,$kTo,"ZERO")."\n" unless ($allHSCheck{$kH}->{'OK'});
+    }
+
+    close OUT; 
+    system ("sort -k1,1 -k2n,2n $tempOut |cut -f1-4 >$outFile");
+}  
+
+################################################################################
+sub printRecenteredHS{
+    my ($pPos,$pNeg,$pCS,$pFrom,$pTo,$altCenter) = @_;
+
+    #my $posMed = $statPos->median;
+    #my $negMed = $statNeg->median;
+
+    my $posMed = median($pPos);
+    my $negMed = median($pNeg);
+    
+    my $midPoint;
+    if ($posMed && $negMed && not($altCenter)){
+	$midPoint = round(($posMed + $negMed)/2);
+    }else{
+   	my $statPos = Statistics::Descriptive::Full->new();
+   	my $statNeg = Statistics::Descriptive::Full->new();
+    	$statPos->add_data(@$pPos) if (@$pPos);
+    	$statNeg->add_data(@$pNeg) if (@$pNeg);
+
+	if ($posMed && $negMed && $altCenter){$midPoint = round(($statPos->percentile(80) + $statNeg->percentile(20))/2)};
+    	if ($posMed && not($negMed)){$midPoint = round($statPos->percentile(80))};
+    	if ($negMed && not($posMed)){$midPoint = round($statNeg->percentile(20))};
+    }
+     
+    my $width    = max(abs($midPoint-$pFrom),abs($midPoint-$pTo));
+       
+    print OUT join("\t",$pCS,$midPoint-$width,$midPoint+$width)."\n";
+}
+
+################################################################################
+sub makeFlanksFile{
+	
+	my ($bed,$tfFinal) = @_;
+	
+	my ($tf1,$tfH1) = genTempFile();
+	my ($tf2,$tfH2) = genTempFile();
+	
+	($tf1,$tf2) = ('tf1.bed','tf2.bed') if ($noTmp);
+	
+	open TMPFLANKS, ">", $tf1;
+	open TMPHS, ">", $tf2;
+	
+	open IN, $bed;
+	
+	while (<IN>){
+		chomp;
+		my @F = split(/\t/,$_);
+		my $midPt     	= round(($F[1]+$F[2])/2);
+		my $halfWidth  	= round(($F[2]-$F[1])/2);
+		
+		## For antiSense BG adjustment, use frags only in the outer 40% of HS either side
+		## This is because we believe that some of the central antisense signal is "real" 
+		my $lastXpc  	= round($halfWidth*.4);
+		
+		my $fName  	= join(":",$F[0],$F[1],$F[2],"F");
+		my $hsName 	= join(":",$F[0],$F[1],$F[2],"HS");
+		my $rhsName 	= join(":",$F[0],$F[1],$F[2],"RHS");
+		my $lhsName 	= join(":",$F[0],$F[1],$F[2],"LHS");
+		my $rhsPCName 	= join(":",$F[0],$F[1],$F[2],"RHSPC");
+		my $lhsPCName 	= join(":",$F[0],$F[1],$F[2],"LHSPC");
+		
+		print TMPFLANKS   printLocus($F[0],$F[1],$midPt,$lhsName);
+		print TMPFLANKS   printLocus($F[0],$midPt+1,$F[2],$rhsName);
+		print TMPFLANKS   printLocus($F[0],$F[1],$F[1]+$lastXpc,$lhsPCName);
+		print TMPFLANKS   printLocus($F[0],$F[2]-$lastXpc,$F[2],$rhsPCName);
+		print TMPFLANKS   printLocus($F[0],$F[1]-10001,$F[1]-1,$fName);
+		print TMPFLANKS   printLocus($F[0],$F[2]+1,$F[2]+10001,$fName);
+		print TMPHS 	  printLocus($F[0],$F[1],$F[2],$hsName);
+	}
+	
+	close IN; close TMPFLANKS; close TMPHS;
+	
+	##################### STEP 2
+	my ($tf3,$tfH3) = genTempFile();
+	$tf3 = 'tf3.bed' if ($noTmp);
+	
+	open TMPNOHS, ">", $tf3;
+	
+	my $cmd = "$bedtoolsBin intersect -a $tf1 -b $bed -wao";
+	
+	open my $PIPE, '-|', $cmd;
+	
+	while (<$PIPE>){
+		my ($cs,$from,$to,$name,$hsCS,$hsFrom,$hsTo,@others) = split(/\t/,$_);
+		
+		## Keep ALL Left / Right Hotspot Halves
+		if ($name =~ /[LR]HS/){
+			print TMPNOHS join("\t",$cs,$from,$to,$name)."\n" ;
+			next;
+		}
+		
+		if ($hsFrom eq '-1'){
+			print TMPNOHS join("\t",$cs,$from,$to,$name)."\n" ;
+		}else{
+			next if ($hsFrom <= $from && $hsTo >= $to);
+			
+			if ($hsFrom <= $from && $hsTo < $to){
+				print TMPNOHS join("\t",$cs,$hsTo+1,$to,$name)."\n" ;
+			}
+			
+			if ($hsFrom > $from && $hsTo >= $to){
+				print TMPNOHS join("\t",$cs,$from,$hsFrom-1,$name)."\n" ;
+			}
+			
+			if ($hsFrom > $from && $hsTo < $to){
+				print TMPNOHS join("\t",$cs,$from,$hsFrom-1,$name)."\n" ;
+				print TMPNOHS join("\t",$cs,$hsTo+1,$to,$name)."\n" ;
+			}
+		}
+	}
+	
+	close TMPNOHS;
+	
+	sysAndPrint("sort -k1,1 -k2n,2n $tf2 $tf3 >$tfFinal",1);
+}
+
+################################################################################
+sub genCoverage{
+	my ($flankFile,$fragFileAll,$HS) = @_;
+	
+	my ($fragFileF,$tfH1) = genTempFile();
+	my ($fragFileR,$tfH2) = genTempFile();
+	
+	genFR($fragFileAll,$fragFileF,$fragFileR);
+	
+	my %cmd;
+	
+	$cmd{fwd}   = "$bedtoolsBin intersect -sorted -a $flankFile -b $fragFileF -c";
+	$cmd{rev}   = "$bedtoolsBin intersect -sorted -a $flankFile -b $fragFileR -c";
+	$cmd{input} = "$bedtoolsBin intersect -sorted -a $flankFile -b $inputFile -c";
+	
+	for my $strand ('fwd','rev','input'){
+
+		next if ($strand eq 'input' && not ($inputFile));		
+
+		open my $PIPE, '-|', $cmd{$strand};
+		
+		while (<$PIPE>){	
+			chomp;
+
+			my ($cs,$from,$to,$name,$cover) = split(/\t/,$_);
+			
+			$name =~ s/:(F|HS|LHS|RHS|LHSPC|RHSPC)$//; my $type = $1;
+			
+			my $midPt     	= round(($from+$to)/2);
+			my $width 	= $to-$from;
+
+			if ($type eq 'HS'){
+				$$HS{$name}->{cover}->{$strand} = $cover;
+				$$HS{$name}->{cover}->{total}   += $cover;
+				$$HS{$name}->{size}		= $width;
+				$$HS{$name}->{cs}		= $cs;
+				$$HS{$name}->{from}		= $from;
+				$$HS{$name}->{to}		= $to;
+				$$HS{$name}->{totinput}		= $cover if ($strand eq 'input');
+				$$HS{$name}->{NCISinput}	= $cover*$NCISfactor if ($strand eq 'input');
+			}
+			
+			if ($type eq 'F'){
+				$$HS{$name}->{flankcover}->{input}   += $cover*$NCISfactor if ($strand eq 'input');
+				$$HS{$name}->{flankcover}->{$strand} = $cover;
+				$$HS{$name}->{flankcover}->{total}   += $cover;
+				$$HS{$name}->{flanksize}  	     += $width;
+			}
+			
+			next if ($strand eq 'input');
+			
+			if ($type eq 'LHS'){
+				my $type = ($strand eq 'fwd')?'signal':'noise';
+				$$HS{$name}->{LHS}->{$type}        = $cover;
+				$$HS{$name}->{LHSsize}  	   = $width;
+			}
+
+			if ($type eq 'RHS'){
+				my $type = ($strand eq 'rev')?'signal':'noise';
+				$$HS{$name}->{RHS}->{$type}        = $cover;
+				$$HS{$name}->{RHSsize}  	   = $width;
+			}
+			
+			if ($type eq 'LHSPC'){
+				my $type = ($strand eq 'fwd')?'signal':'noise';
+				$$HS{$name}->{LHSPC}->{$type}      = $cover;
+				$$HS{$name}->{LHSPCsize}  	   = $width;
+			}
+
+			if ($type eq 'RHSPC'){
+				my $type = ($strand eq 'rev')?'signal':'noise';
+				$$HS{$name}->{RHSPC}->{$type}      = $cover;
+				$$HS{$name}->{RHSPCsize}  	   = $width;
+			}
+			
+		}
+	}
+}
+
+################################################################################
+sub printHS{
+	my ($HS,$fragCnt) = @_;
+	
+	my ($prelimOut,$poH) = genTempFile();
+	open TMPFINAL, '>', $prelimOut;
+	my ($totStrength);
+	
+	for my $name (sort (keys %{$HS})){
+		#next unless ($$HS{$name}->{size});
+
+		my ($adjacentNCISCover,$inputCover,$TOTinputCover);
+		my ($adjacentNCISCover_perNT,$inputCover_perNT,$TOTinputCover_perNT);
+		my ($adjacentNCISCover_HS,$inputCover_HS,$TOTinputCover_HS);
+				
+		my $cover           	 = $$HS{$name}->{cover}->{total};
+		my $adjacentCover  	 = ($$HS{$name}->{flankcover}->{total});
+		my $antiSenseBG    	 = ($$HS{$name}->{RHS}->{noise} + $$HS{$name}->{LHS}->{noise});
+
+		## Get antisense ssDNA background: 
+		## Count antisense (fwd:RHS / rev:LHS) fragments either side of HS center (excluding center) & extrapolate to entire hotspot
+		my $antiSensePCBG    	 = ($$HS{$name}->{RHSPC}->{noise} + $$HS{$name}->{LHSPC}->{noise})/($$HS{$name}->{RHSPCsize} + $$HS{$name}->{LHSPCsize})*$$HS{$name}->{size};
+		my $leftSignal    	 = $$HS{$name}->{LHS}->{signal};
+		my $rightSignal    	 = $$HS{$name}->{RHS}->{signal};
+		my $leftNoise    	 = $$HS{$name}->{LHS}->{noise};
+		my $rightNoise    	 = $$HS{$name}->{RHS}->{noise};
+
+		my $leftFwd	    	 = $$HS{$name}->{LHS}->{signal};
+		my $rightRev    	 = $$HS{$name}->{RHS}->{signal};
+		my $leftRev	    	 = $$HS{$name}->{LHS}->{noise};
+		my $rightFwd    	 = $$HS{$name}->{RHS}->{noise};		
+	
+		my ($cs,$from,$to) = ($$HS{$name}->{cs},$$HS{$name}->{from},$$HS{$name}->{to});
+		
+		print TMPFINAL join("\t",$cs,$from,$to,($cover-round($antiSensePCBG)),$cover,round($antiSensePCBG)."\n");
+		$totStrength += ($cover-round($antiSensePCBG));
+	}
+	
+	close TMPFINAL;
+	
+	my ($outTmpA,$oTA) = genTempFile();
+	my ($outTmpB,$oTB) = genTempFile();
+	my ($outTmpC,$oTC) = genTempFile();
+	my ($outTmpD,$oTD) = genTempFile();
+
+	## Generate hotspot output Files
+	# make initial sorted output file
+	sysAndPrint("sort -k1,1 -k2n,2n $prelimOut >$outTmpA",1);
+
+	# Generate bedgraph file with ranks
+	my $rank;
+	open my $RPIPE, '-|', "sort -k4rn,4rn $outTmpA";
+	open RANKTMP, '>', $outTmpB;
+	
+	while (<$RPIPE>){
+		chomp;
+		my @X = split(/\t/,$_);
+		print RANKTMP join("\t",$X[0],$X[1],$X[2],++$rank)."\n";
+	}
+	
+	close RANKTMP; 
+	
+	sysAndPrint("sort -k1,1 -k2n,2n $outTmpB >$outTmpC",1);
+	sysAndPrint("paste $outTmpA $outTmpC >$outTmpD",1);
+
+	sysAndPrint("cut -f1-4 $outTmpA >$outBG");
+#	sysAndPrint("cut -f1-4,8-100 $outTmpD >$outTab");
+
+	open TABIN,  $outTmpD; 
+	open TABOUT, '>', $outTab;
+	print TABOUT join("\t","cs","from","to","strength","strengthPC","strengthRank","signalReads","bgReads"."\n");
+	while (<TABIN>){
+		chomp; 
+		my @F = split(/\t/,$_);
+		my $pc = sprintf("%6.5f",$F[3]/$totStrength*100);
+		print TABOUT  join("\t",@F[0..3],$pc,$F[9],@F[4..5])."\n";
+	}
+	close TABIN;
+
+
+}
+
+################################################################################
+sub divZero{
+	my ($dzNum,$dzDivisor) = @_;
+
+	if ($dzDivisor && $dzDivisor >0){
+		return ($dzNum/$dzDivisor);
+	}
+	return $dzNum;
+}
+	
+
+################################################################################
+sub getNCISfactor{
+	my $inNCIS = shift;
+	
+	my $NCISdata = `cat $inNCIS`;
+	my @fNCIS = split(/\s+/,$NCISdata);
+	
+	return $fNCIS[0];
+}
+################################################################################
+sub printLocus{
+	my ($plCS,$plFrom,$plTo,$plName) = @_;
+	
+	$plFrom = 1 if($plFrom < 1);
+	return "" if ($plCS !~ /^chr([0-9]|X|Y)+$/);
+	return "" if ($plFrom > $plTo);
+	return (join("\t",$plCS,$plFrom,$plTo,$plName)."\n");
+}
+################################################################################
+sub genFR{
+	
+	my ($fAll,$fF,$fR) = @_;
+	open TMPF, ">", $fF;
+	open TMPR, ">", $fR;
+	
+	open IN, $fAll;
+	
+	while (<IN>){
+		print TMPF if ($_ =~ /\s\+\s*$/);
+		print TMPR if ($_ =~ /\s\-\s*$/);
+	}
+	
+	close TMPF; close TMPR;
+}
+
+################################################################################
+sub lineCount{
+	my $f = shift;
+	my $fSz = `wc -l $f`;
+	chomp $fSz;
+	$fSz =~ s/^(\d+).+$/$1/;
+	return $fSz;
+}	
+
+################################################################################
+sub median { $_[0]->[ @{$_[0]} / 2 ] }
+
+################################################################################
+sub showHELP{
+	my ($err) = shift;
+	printHELP($err);
+	exit;
+}
+
+################################################################################
+sub printHELP{
+	my $msg = shift;
+
+if ($msg){
+	print "******************************************************************************\n";
+	print "ERROR: $msg\n";
+	print "******************************************************************************\n";
+}
+
+print <<HELP
+
+calcStrengthAndRecenterHotspots.pl
+K. Brick: July 16th 2014
+
+------------------------------------------------------------------------------
+ARG         VALUE       REQUIRED   DEFINITION
+------------------------------------------------------------------------------
+--hs        bed file    Yes        hotspots bed file
+--frag      bed file    Yes        ssDNA fragments bed file
+--out       file name   No         output file name
+--v         none        No         verbose mode ON 
+--noRC      none        No         do NOT recenter hotspots 
+--nt        none        No         do NOT use temp files (good to debug)
+--as        none        No         Use alternative centring strategy
+                                   - use 80th percentiles of F/R dists
+                                     instead of median
+--noCheck   none        No         do not check that input files are sorted
+                                   - faster but will result in odd results if
+                                     input files are not both sorted in the
+                                     same way
+--h         none        No         display this help
+--help      none        No         display this help
+
+EXAMPLE:
+./calcStrengthAndRecenterHotspots.pl --hs B6_dmc1SSDS_hotspots.bed --frag B6_dmc1SSDS_ssDNA_type1.bed  
+
+REQUIREMENTS: 
+BEDTools intersectBed (in your PATH)
+TMPPATH environment variable
+PERL modules -> List::Util, Getopt::Long, Statistics::Descriptive, Math::Round
+
+WHAT IT DOES:
+This script takes a set of ssDNA defined peaks (bed file), an ssDNA fragment bed
+file and does the following:
+1. Recenters the peaks by the median of the F/R dists
+2. Calculate the in-peak background in a number of ways.
+3. Output recentered peaks with strength. Strength is calculated as the total number
+   of in-hotspot fragments minus the number of "non-sense" ssDNA fragments (i.e. REV 
+   to left of center + FWD to right of center). In fact, this calculation is a little
+   more complex, as we exclude "non-sense" ssDNA in the center (40th-60th percentile)
+   of hotspots (check the code for details). 
+4. Two files are output: 
+   bedgraph -> recentered HS with strength
+   tab -> as for bedgraph, but with a header row and some extra detail
+   
+HELP
+}

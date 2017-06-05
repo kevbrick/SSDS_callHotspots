@@ -1,0 +1,248 @@
+#!/usr/bin/perl
+
+use strict; 
+use CHS_pipeline;
+use Getopt::Long; 
+
+unless($ARGV[0]){ShowHelp() ; exit}
+
+GetOptions ('t=s'		=> \(my $t),
+			'c=s'		=> \(my $c),
+			'tuniq=s'   => \(my $tUniq),
+			'cuniq=s'   => \(my $cUniq),
+			'ncis=s'	=> \(my $ncis),
+			'r=s'		=> \(my $ncisRatioArg),
+			'gName=s'	=> \(my $g),
+			'gSz=s'		=> \(my $gSz),
+			'name=s' 	=> \(my $name),
+			'blist=s' 	=> \(my $blacklistFile),
+			'out=s' 	=> \(my $outPath = './'),
+			'p=s'		=> \(my $partition),
+			'q30+'		=> \(my $useQ30),
+			'nc+'		=> \(my $noCalls),
+			'debug+'	=> \(my $debugMode),
+			'help|?|h' 	=> \(my $help));
+
+ShowHelp() if ($help);
+unless ($g || $gSz){
+	ShowHelp ('--gName OR --gSz required') ;
+	die();
+}
+
+unless ($name){
+	ShowHelp ('--name required') unless ($name);
+	die();
+}
+
+unless ($t){
+	ShowHelp ('--t [treatment ssDNA bed file] required');
+	die();
+}
+
+unless (-e $t){
+	ShowHelp ('--t [treatment ssDNA bed file] does not exist ('.$t.')');
+	die();
+}
+
+unless ($c){
+	ShowHelp ('--c [control ssDNA bed file] required');
+	die();
+}
+
+unless (-e $c){
+	ShowHelp ('--c [control ssDNA bed file] does not exist ('.$c.')');
+	die();
+}
+
+if ($ncis && not (-e $ncis)){
+	ShowHelp ('--ncis ['.$ncis.' : File does not exist !!]');
+	die();
+}
+
+if ($ncisRatioArg && $ncisRatioArg !~ /^[\d\.]+$/){
+	ShowHelp ('--r [Invalid NCIS ratio :'.$ncisRatioArg.' ... must be numeric]');
+	die();
+}
+
+my ($CHSPATH,$CHSBEDTOOLSPATH,$CHSMACSPATH,$CHSNCISPATH,$CHSTMPPATH) = CHS_pipeline::genPaths();
+
+unless ($gSz){
+	$gSz = 'hs'  if ($g =~ /(hg19|hg18|hg38|hg|hs|human)/i);
+	$gSz = 'mm'  if ($g =~ /(mm9|mm10|mm|mouse)/i);
+	$gSz = '2e9' if ($g =~ /(rn|rat)/i);
+}
+
+die unless ($gSz);
+########################################################################################
+# ALL GOOD ... Let's GO !!
+
+## add output folder to name
+$name = $outPath.'/'.$name; $name =~ s/\/\//\//g; 
+
+## make output script
+my $dt    = fnDateTime();
+my $oFile = $name.'.macs2callpeak.'.$dt.'.OUT';
+my $eFile = $name.'.macs2callpeak.'.$dt.'.ERR';
+
+sysAndPrint('mkdir ./.chsScripts 2>/dev/null',1);
+
+my $script = './.chsScripts/.chsScripts_'.int(rand()*10000000000).'.sh';
+
+open  SCRIPT, '>', $script;
+print SCRIPT  '#!/bin/bash'."\n";
+
+# Get unique SSDS fragments; Q30 filter if required
+$tUniq = makeUniq($t,$useQ30) unless (-e $tUniq);
+$cUniq = makeUniq($c,$useQ30) unless (-e $cUniq);
+
+# Pipe NCIS commands to run script unless it's already done 
+# or unless a ratio has been passed by argument
+unless (($ncis && -e $ncis) || $ncisRatioArg){
+	#$ncis = $t; $ncis =~ s/^.+\///; 
+	#$ncis =~ s/^(.+)\..+/$1.NCISout/;
+	$ncis = $name.'.NCISout';
+	my $NCIS_Rscript = makeNCISscript($tUniq,$cUniq,$ncis);
+	print SCRIPT "R --vanilla <$NCIS_Rscript\n";
+}
+
+# Pipe MACS commands to run script unless specified not to
+unless ($noCalls){
+	print SCRIPT 'ratio=`perl '.$CHSPATH.'/getNCISratio.pl '.$ncis.'`'."\n";
+	print SCRIPT 'python2.7 '.$CHSMACSPATH."/macs2 callpeak --ratio \$ratio -g $gSz -t $tUniq -c $cUniq --bw 1000 --keep-dup all --slocal 5000 --name $name >$oFile 2>$eFile\n";
+}
+
+# Pipe blacklist filter to run script if required
+if ($blacklistFile){
+	print SCRIPT $CHSBEDTOOLSPATH."/bedtools intersect -a $name\_peaks.narrowPeak -b $blacklistFile -v | grep -v ^M |grep -v chrM |sort -k1,1 -k2n,2n |cut -f1-3 >$name\_peaks.bed\n";
+}else{
+	print STDERR "###### WARNING ######\n";
+	print STDERR "###### No blacklist file provided\n";
+	print STDERR "###### It is highly recommended to use a blacklist to \n";
+	print STDERR "###### remove spurious peaks in poorly assembled parts\n";
+	print STDERR "###### of the genome\n";
+	print STDERR "###### WARNING ######\n";
+	
+	print SCRIPT "cut -f1-3 $name\_peaks.narrowPeak |grep -v ^M |grep -v chrM |sort -k1,1 -k2n,2n >$name\_peaks.bed\n";
+}
+
+# Pipe strength estimation to run script
+print SCRIPT "perl $CHSPATH/calcStrengthAndRecenterHotspots.pl --hs $name\_peaks.bed --frag $t --v --out $name\_peaks.bedgraph \n";
+close SCRIPT; 
+
+sysAndPrint("sh $script",($debugMode?0:1));
+
+################################################################################
+sub ShowHelp{
+    my $msg = $_; 
+	
+    print "ERROR !!\n$msg\n" if ($msg);
+    print <<HLP
+--------------------------------------------------------------------------------
+run_callHotspotsPipeline: KB - 03-17-2016
+--------------------------------------------------------------------------------
+ARGUMENTS:
+-------------------------------------------------------------------------------- 
+ARG:         REQUIRED:       DETAIL:
+--t          Y               Treatment ssDNA type 1 bed file
+--c          Y               Control ssDNA type 1 bed file
+--gSz        Y(or --gName)   Effective genome size (estimated size of mappable part of genome)
+--gName      Y(or --gSz)     Genome name/species for default gSz estimation
+                             for human: hg19|hg18|hg38|hg|hs|human
+                             for mouse: mm9|mm10|mm|mouse
+                             for rat:   rn|rat
+--name       Y               Name prefix for output files
+--out                        Output folder (default = current)
+--blist                      Blacklist file (regions of the genome with sequencing biases)
+                             i.e. mouse: \$CHSPATH/mm10_hotspot_blacklist.bed
+--ncis                       NCIS file name 
+--r                          NCIS ratio
+--tuniq                      Name of the treatment BED file if it's already uniqued
+--cuniq                      Name of the control BED file if it's already uniqued
+--debug                      [logical: no value] Debug mode; builds script but does not execute
+--q30                        [logical: no value] Use only reads with Q >= 30
+--nc                         [logical: no value] Do not make peak calls
+--h                          Show this help
+            
+HLP
+
+}
+
+##############################################################################################################################
+sub makeUniq{
+	my ($muIn,$q30) = @_;
+	
+	# Set temp folder path
+	my $tmpPath = $ENV{'CHSTMPPATH'}.'/'; $tmpPath =~ s/\/\//\//g;
+	
+	if (isUnique($muIn)){
+		return $muIn;
+	}else{
+		my $muUniq = $muIn; $muUniq =~ s/.bed/.uniq.bed/;
+		$muUniq =~ s/^.+\///;
+		$muUniq = $tmpPath.$muUniq;
+
+		if ($q30){
+			print SCRIPT 'sort -k1,1 -k2n,2n -k3n,3n -k4,4 -k5,5 -k6,6 -T '.$tmpPath.' '.$muIn.' |uniq |perl -lane \'@X=split(/_/,$F[3]); print $_ if ($X[0] >= 30 && $X[1] >= 30)\' >'.$muUniq."\n";
+		}else{
+			print SCRIPT 'sort -k1,1 -k2n,2n -k3n,3n -k4,4 -k5,5 -k6,6 -T '.$tmpPath.' '.$muIn.' |uniq >'.$muUniq."\n";
+		}
+		return $muUniq;
+	}
+}
+
+##############################################################################################################################
+sub isUnique{
+	my $iuIn = shift; 
+	my @all = `head -n 50000 $iuIn`;
+	my @unq = `head -n 50000 $iuIn | uniq`;
+	
+	return ($#all == $#unq?1:0);
+}
+
+##############################################################################################################################
+sub getNCISratio{
+	my $nIn = shift; 
+	
+	my $ncisR = `cat $nIn`;
+	$ncisR =~ s/^((\d|\.)+)\s.+$/$1/;
+	chomp $ncisR; 
+	return $ncisR;
+}
+
+##############################################################################################################################
+sub NCISdownsample{
+	my ($cIn,$cRatio) = @_; 
+	
+	my $cOut = $cIn; 
+	$cOut =~ s/bed/$cRatio\.bed/;
+
+	open IN, $cIn;
+	open OUT,'>', $cOut;
+
+	while (<IN>){
+		chomp; 
+		print OUT $_."\n" if (rand() <= $cRatio);
+	}
+	close IN; close OUT;
+
+	return $cOut;
+}
+
+##############################################################################################################################
+sub makeNCISscript{
+	my ($treatFile,$inputFile,$NCISout) = @_;
+	
+	my $NCISscript = "$CHSTMPPATH\/CHS_NCIS_".(int(rand()*1000000000000000)).'.R';
+
+	open OUT, '>', $NCISscript;
+
+	print OUT 'library("NCIS", lib.loc="'.$CHSNCISPATH.'")'."\n";
+	print OUT 'library(\'rtracklayer\')'."\n";
+	print OUT 'library("ShortRead")'."\n";
+	print OUT 'res <- NCIS("'.$treatFile.'","'.$inputFile.'","BED")'."\n";
+	print OUT 'write(paste(res$est,res$pi0,res$binsize.est,res$r.seq.depth,sep = "\t"), "'.$NCISout.'", sep = "\t")'."\n";
+
+	close OUT;
+
+	return($NCISscript);
+}

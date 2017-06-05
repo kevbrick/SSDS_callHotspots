@@ -1,0 +1,6 @@
+#!/bin/bash
+sort -k1,1 -k2n,2n -k3n,3n -k4,4 -k5,5 -k6,6 -T /tmp/ /home/kevbrick/data/SSDS_Pipeline/callPeaks/git/unitTest/output/treatment/dmc1SSDS_CHSdemo.testgenome.ssDNA_type1.bed |uniq >/tmp/dmc1SSDS_CHSdemo.testgenome.ssDNA_type1.uniq.bed
+sort -k1,1 -k2n,2n -k3n,3n -k4,4 -k5,5 -k6,6 -T /tmp/ /home/kevbrick/data/SSDS_Pipeline/callPeaks/git/unitTest/output/control/IgG_SSDS_CHSdemo.testgenome.ssDNA_type1.bed |uniq >/tmp/IgG_SSDS_CHSdemo.testgenome.ssDNA_type1.uniq.bed
+R --vanilla </tmp//SSDSpl_tmp_94013437845/CHS_NCIS_941816987973776.R
+cut -f1-3 /home/kevbrick/data/SSDS_Pipeline/callPeaks/git/unitTest/output/hotspots/callHotspotsTest_peaks.narrowPeak |grep -v ^M |grep -v chrM |sort -k1,1 -k2n,2n >/home/kevbrick/data/SSDS_Pipeline/callPeaks/git/unitTest/output/hotspots/callHotspotsTest_peaks.bed
+perl /home/kevbrick/data/SSDS_Pipeline/callPeaks/git//calcStrengthAndRecenterHotspots.pl --hs /home/kevbrick/data/SSDS_Pipeline/callPeaks/git/unitTest/output/hotspots/callHotspotsTest_peaks.bed --frag /home/kevbrick/data/SSDS_Pipeline/callPeaks/git/unitTest/output/treatment/dmc1SSDS_CHSdemo.testgenome.ssDNA_type1.bed --v --out /home/kevbrick/data/SSDS_Pipeline/callPeaks/git/unitTest/output/hotspots/callHotspotsTest_peaks.bedgraph 
