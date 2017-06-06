@@ -15,7 +15,7 @@ echo 'biocLite("ShortRead")' >>Rconf.R
 R --vanilla <Rconf.R 
 
 ## Get MACS
-pip install --install-option="--prefix="$INSTALLDIR"/macs" -U MACS2==2.1.0.20150731 
+sudo -H pip install --install-option="--prefix="$INSTALLDIR"/macs" -U MACS2==2.1.0.20150731
 MACSfolder=`which macs2`
 
 ## Get perl modules
