@@ -1,6 +1,17 @@
 #!/bin/bash
 
-INSTALLDIR=`pwd`
+RUNDIR=`pwd`
+
+TSTFILE=$RUNDIR'/run_callHotspotsPipeline'
+
+if [ -f $TSTFILE ]; then
+else
+   echo "** ERROR **"
+   echo "Cannot execute config script from $RUNDIR"
+   echo "Please run configure.sh from the call hotspots pipeline folder."
+   echo "This folder contains the run_callHotspotsPipeline script."
+   exit
+fi
 
 ## Get packages
 apt-get install -y r-base-core libxml2-dev libcurl4-openssl-dev python-setuptools python-pip
@@ -15,7 +26,8 @@ echo 'biocLite("ShortRead")' >>Rconf.R
 R --vanilla <Rconf.R 
 
 ## Get MACS
-sudo -H pip install --install-option="--prefix="$INSTALLDIR"/macs" -U MACS2==2.1.0.20150731
+pip install --root="--prefix="$INSTALLDIR"/macs2" -U MACS2==2.1.0.20150731
+
 MACSfolder=`which macs2`
 
 ## Get perl modules
@@ -28,7 +40,7 @@ cpan List::Util
 ## Add environment vars to .bashrc
 echo ' ' >>~/.bashrc
 echo '## VARIABLES FOR callHotspots SSDS pipeline' >>~/.bashrc
-echo 'export CHSPATH=$INSTALLDIR' >>~/.bashrc
+echo 'export CHSPATH=$RUNDIR' >>~/.bashrc
 echo 'export CHSNCISPATH=$CHSPATH/NCIS' >>~/.bashrc
 echo 'export CHSBEDTOOLSPATH=$CHSPATH/bedtools' >>~/.bashrc
 echo 'export CHSMACSPATH='$MACSfolder >>~/.bashrc
