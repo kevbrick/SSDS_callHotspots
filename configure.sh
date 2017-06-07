@@ -1,5 +1,6 @@
 #!/bin/bash
 
+
 RUNDIR=`pwd`
 
 TSTFILE=$RUNDIR'/run_callHotspotsPipeline'
@@ -44,8 +45,8 @@ echo 'export PERL5LIB=$PERL5LIB:$CHSPATH' >>~/.bashrc
 
 ## Get MACS
 pip install --root=$RUNDIR"/macs_2.1.0.20150731" -U MACS2==2.1.0.20150731
-MACSBINfolder=`find -name 'macs2' |perl -pi -e 's/^\.(.+)macs2/$ENV{RUNDIR}$1/e'`
-MACSLIBfolder=`find -name 'dist-packages' |perl -pi -e 's/^./$ENV{RUNDIR}/e'`
+MACSBINfolder=`find -name 'macs2' |perl -pi -e 's/^\.(.+)macs2/$ENV{PWD}$1/e'`
+MACSLIBfolder=`find -name 'dist-packages' |perl -pi -e 's/^./$ENV{PWD}/e'`
 echo 'export CHSMACSPATH='$MACSBINfolder >>~/.bashrc 
 echo 'export PYTHONPATH='$MACSLIBfolder':' >>~/.bashrc 
 source ~/.bashrc
