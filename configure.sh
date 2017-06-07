@@ -5,6 +5,7 @@ RUNDIR=`pwd`
 TSTFILE=$RUNDIR'/run_callHotspotsPipeline'
 
 if [ -f $TSTFILE ]; then
+   echo "OK ... configuring SSDS call hotspots pipleine ..."
 else
    echo "** ERROR **"
    echo "Cannot execute config script from $RUNDIR"
