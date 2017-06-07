@@ -15,7 +15,7 @@ else
 fi
 
 ## Get packages
-apt-get install -y r-base-core libxml2-dev libcurl4-openssl-dev python-setuptools python-pip
+apt-get install -y r-base-core libxml2-dev libcurl4-openssl-dev python-setuptools python-pip python-numpy python-scipy
  
 ## Get R packages
 echo 'install.packages(“RCurl”)' >Rconf.R
