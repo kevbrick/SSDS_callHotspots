@@ -43,7 +43,7 @@ echo 'export CHSTMPPATH=/tmp' >>~/.bashrc
 echo 'export PERL5LIB=$PERL5LIB:$CHSPATH' >>~/.bashrc
 
 ## Get MACS
-pip install --root="--prefix="$RUNDIR"/macs2" -U MACS2==2.1.0.20150731
+pip install --root=$RUNDIR"/macs2" -U MACS2==2.1.0.20150731
 MACSfolder=`find -name 'site-packages' |perl -pi -e 's/^./$ENV{CHSPATH}/e'`
 echo 'export CHSMACSPATH='$MACSfolder >>~/.bashrc 
 
