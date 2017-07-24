@@ -53,4 +53,11 @@ MACSBINfolder=`find $RUNDIR -name 'macs2'`
 MACSLIBfolder=`find $RUNDIR -name 'dist-packages'` 
 echo 'export CHSMACSPATH='$MACSBINfolder >>~/.bashrc || exit 1
 echo 'export PYTHONPATH='$MACSLIBfolder':'$PYTHONPATH >>~/.bashrc || exit 1
+
 . ~/.bashrc || exit 1
+
+echo "Configureation complete ... running unit tests ..."
+
+sh $CHSPATH/unitTest/runTest.sh || exit 1
+
+echo "Tests complete ..."
