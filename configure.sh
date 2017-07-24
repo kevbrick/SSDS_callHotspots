@@ -48,10 +48,10 @@ echo 'export CHSTMPPATH=/tmp' >>~/.bashrc || exit 1
 echo 'export PERL5LIB=$PERL5LIB:'$RUNDIR >>~/.bashrc || exit 1
 
 ## Get MACS
-#pip install --root=$RUNDIR"/macs_2.1.0.20150731" -U MACS2==2.1.0.20150731 || exit 1
+pip install --root=$RUNDIR"/macs_2.1.0.20150731" -U MACS2==2.1.0.20150731 || exit 1
 MACSBINfolder=`find $RUNDIR -name 'macs2'` 
 MACSLIBfolder=`find $RUNDIR -name 'dist-packages'` 
-echo 'export CHSMACSPATH='$MACSBINfolder >>~/.bashrc || exit 1
+echo 'export CHSMACSPATH='$MACSBINfolder |perl -pi -e 's/\/macs2//' >>~/.bashrc || exit 1
 echo 'export PYTHONPATH='$MACSLIBfolder':'$PYTHONPATH >>~/.bashrc || exit 1
 
 . ~/.bashrc || exit 1

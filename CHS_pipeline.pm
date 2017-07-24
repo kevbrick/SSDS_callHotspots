@@ -67,7 +67,7 @@ sub genPaths{
 	die ("\n## ERROR ##\nInvalid CHSBEDTOOLSPATH environment variable ($bedtoolsPath) \n") if (not (-e ($bedtoolsPath.'/bedtools')));
 
 	die ("\n## ERROR ##\nCHSMACSPATH environment variable NOT set. \n") if (not ($macsPath));
-	die ("\n## ERROR ##\nInvalid CHSMACSPATH environment variable ($macsPath) \n") if (not (-e ($macsPath)));
+	die ("\n## ERROR ##\nInvalid CHSMACSPATH environment variable ($macsPath) \n") if (not (-e ($macsPath.'/macs2')));
 	
 	die ("\n## ERROR ##\nCHSNCISPATH environment variable NOT set. \n") if (not ($ncisPath));
 	die ("\n## ERROR ##\nInvalid CHSNCISPATH environment variable ($ncisPath) \n") if (not (-e ($ncisPath.'/1471-2105-13-199-s2.pdf')));
