@@ -39,13 +39,15 @@ cpan Statistics::Descriptive || exit 1
 cpan List::Util || exit 1
 
 ## Add environment vars to .bashrc
-echo ' ' >>~/.bashrc || exit 1
-echo '## VARIABLES FOR callHotspots SSDS pipeline' >>~/.bashrc || exit 1
-echo 'export CHSPATH='$RUNDIR >>~/.bashrc || exit 1
-echo 'export CHSNCISPATH='$RUNDIR'/NCIS' >>~/.bashrc || exit 1
-echo 'export CHSBEDTOOLSPATH='$RUNDIR'/bedtools' >>~/.bashrc || exit 1
-echo 'export CHSTMPPATH=/tmp' >>~/.bashrc || exit 1
-echo 'export PERL5LIB=$PERL5LIB:'$RUNDIR >>~/.bashrc || exit 1
+echo '## VARIABLES FOR callHotspots SSDS pipeline' >$RUNDIR'/.callSSDSPeaksPaths.sh' || exit 1
+echo 'export CHSPATH='$RUNDIR >>$RUNDIR'/.callSSDSPeaksPaths.sh' || exit 1
+echo 'export CHSNCISPATH='$RUNDIR'/NCIS' >>$RUNDIR'/.callSSDSPeaksPaths.sh' || exit 1
+echo 'export CHSBEDTOOLSPATH='$RUNDIR'/bedtools' >>$RUNDIR'/.callSSDSPeaksPaths.sh' || exit 1
+echo 'export CHSTMPPATH=/tmp' >>$RUNDIR'/.callSSDSPeaksPaths.sh' || exit 1
+echo 'export PERL5LIB=$PERL5LIB:'$RUNDIR >>$RUNDIR'/.callSSDSPeaksPaths.sh' || exit 1
+echo 'export PATH=$PATH:'$RUNDIR >>$RUNDIR'/.callSSDSPeaksPaths.sh' || exit 1
+
+echo 'sh '$RUNDIR'/.callSSDSPeaksPaths.sh' >>~/.bashrc || exit 1
 
 ## Get MACS
 pip install --root=$RUNDIR"/macs_2.1.0.20150731" -U MACS2==2.1.0.20150731 || exit 1
