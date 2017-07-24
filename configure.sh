@@ -49,9 +49,9 @@ echo 'export PATH=$PATH:'$RUNDIR >>$RUNDIR'/.callSSDSPeaksPaths.sh' || exit 1
 
 ## Get MACS
 pip install --root=$RUNDIR"/macs_2.1.0.20150731" -U MACS2==2.1.0.20150731 || exit 1
-MACSBINfolder=`find $RUNDIR -name 'macs2'` 
+MACSBINfolder=`find $RUNDIR -name 'macs2' |perl -pi -e 's/\/macs2//'` 
 MACSLIBfolder=`find $RUNDIR -name 'dist-packages'` 
-echo 'export CHSMACSPATH='$MACSBINfolder |perl -pi -e 's/\/macs2//' >>$RUNDIR'/.callSSDSPeaksPaths.sh' || exit 1
+echo 'export CHSMACSPATH='$MACSBINfolder >>$RUNDIR'/.callSSDSPeaksPaths.sh' || exit 1
 echo 'export PYTHONPATH='$MACSLIBfolder':'$PYTHONPATH >>$RUNDIR'/.callSSDSPeaksPaths.sh' || exit 1
 
 echo 'sh '$RUNDIR'/.callSSDSPeaksPaths.sh' >>~/.bashrc || exit 1
@@ -62,6 +62,8 @@ export CHSBEDTOOLSPATH=$RUNDIR'/bedtools' || exit 1
 export CHSTMPPATH='/tmp' || exit 1
 export PERL5LIB=$PERL5LIB':'$RUNDIR  || exit 1
 export PATH=$PATH':'$RUNDIR || exit 1
+export CHSMACSPATH=$MACSBINfolder || exit 1
+export PYTHONPATH=$MACSLIBfolder':'$PYTHONPATH || exit 1
 
 chmod a+x $RUNDIR/.callSSDSPeaksPaths.sh
 
