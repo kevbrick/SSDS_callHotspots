@@ -61,3 +61,4 @@ echo "Configureation complete ... running unit tests ..."
 sh $CHSPATH/unitTest/runTest.sh || exit 1
 
 echo "Tests complete ..."
+echo "callHotspots pipeline installed to "$CHSPATH
