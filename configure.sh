@@ -56,10 +56,17 @@ echo 'export PYTHONPATH='$MACSLIBfolder':'$PYTHONPATH >>$RUNDIR'/.callSSDSPeaksP
 
 echo 'sh '$RUNDIR'/.callSSDSPeaksPaths.sh' >>~/.bashrc || exit 1
 
-chmod a+x $RUNDIR/.callSSDSPeaksPaths.sh
-sh $RUNDIR/.callSSDSPeaksPaths.sh
+export CHSPATH=$RUNDIR  || exit 1
+export CHSNCISPATH=$RUNDIR'/NCIS' || exit 1
+export CHSBEDTOOLSPATH=$RUNDIR'/bedtools' || exit 1
+export CHSTMPPATH='/tmp' || exit 1
+export PERL5LIB=$PERL5LIB':'$RUNDIR  || exit 1
+export PATH=$PATH':'$RUNDIR || exit 1
 
-. ~/.bashrc || exit 1
+chmod a+x $RUNDIR/.callSSDSPeaksPaths.sh
+
+#sh $RUNDIR/.callSSDSPeaksPaths.sh
+#. ~/.bashrc || exit 1
 
 echo ''
 echo $PYTHONPATH' ... OK?'
@@ -70,7 +77,7 @@ echo '-------------------------------------------------'
 echo "Configuration complete ... running unit tests ..."
 echo '-------------------------------------------------'
 
-sh $RUNDIR/unitTest/runTest.sh || exit 1
+sh $RUNDIR\/unitTest/runTest.sh || exit 1
 
 echo "Tests complete ..."
 echo "callHotspots pipeline installed to "$CHSPATH
