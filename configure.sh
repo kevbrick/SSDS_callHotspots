@@ -1,6 +1,11 @@
 #!/bin/bash
 
 RUNDIR=`pwd`
+FLDNAME=`basename $RUNDIR`
+
+cp -r $RUNDIR /usr/share || exit 1
+
+RUNDIR='/usr/share/'$FLDNAME
 
 TSTFILE=$RUNDIR'/run_callHotspotsPipeline'
 
@@ -15,37 +20,37 @@ else
 fi
 
 ## Get packages
-apt-get install -y r-base-core libxml2-dev libcurl4-openssl-dev python-setuptools python-pip python-numpy python-scipy
+apt-get install -y r-base-core libxml2-dev libcurl4-openssl-dev python-setuptools python-pip  python-numpy python-scipy || exit 1
  
 ## Get R packages
-echo 'install.packages(“RCurl”)' >Rconf.R
-echo 'install.packages(“XML”)' >>Rconf.R
-echo 'source("https://bioconductor.org/biocLite.R")' >>Rconf.R
-echo 'biocLite("rtracklayer")' >>Rconf.R
-echo 'biocLite("ShortRead")' >>Rconf.R
+echo 'if (!require("RCurl")){install.packages("RCurl", repos="http://cran.rstudio.com")}' >$RUNDIR/Rconf.R || exit 1
+echo 'if (!require("XML")){install.packages("XML", repos="http://cran.rstudio.com")}' >>$RUNDIR/Rconf.R || exit 1
+echo 'source("https://bioconductor.org/biocLite.R")' >>$RUNDIR/Rconf.R || exit 1
+echo 'if (!require("rtracklayer")){biocLite("rtracklayer")}' >>$RUNDIR/Rconf.R || exit 1
+echo 'if (!require("ShortRead")){biocLite("ShortRead")}' >>$RUNDIR/Rconf.R || exit 1
 
-R --vanilla <Rconf.R 
+R --vanilla <$RUNDIR/Rconf.R || exit 1
 
 ## Get perl modules
-cpan File::Temp
-cpan Getopt::Long
-cpan Math::Round
-cpan Statistics::Descriptive
-cpan List::Util
+cpan File::Temp || exit 1
+cpan Getopt::Long || exit 1
+cpan Math::Round || exit 1
+cpan Statistics::Descriptive || exit 1
+cpan List::Util || exit 1
 
 ## Add environment vars to .bashrc
-echo ' ' >>~/.bashrc
-echo '## VARIABLES FOR callHotspots SSDS pipeline' >>~/.bashrc
-echo 'export CHSPATH=$RUNDIR' >>~/.bashrc
-echo 'export CHSNCISPATH=$CHSPATH/NCIS' >>~/.bashrc
-echo 'export CHSBEDTOOLSPATH=$CHSPATH/bedtools' >>~/.bashrc
-echo 'export CHSTMPPATH=/tmp' >>~/.bashrc
-echo 'export PERL5LIB=$PERL5LIB:$CHSPATH' >>~/.bashrc
+echo ' ' >>~/.bashrc || exit 1
+echo '## VARIABLES FOR callHotspots SSDS pipeline' >>~/.bashrc || exit 1
+echo 'export CHSPATH='$RUNDIR >>~/.bashrc || exit 1
+echo 'export CHSNCISPATH='$RUNDIR'/NCIS' >>~/.bashrc || exit 1
+echo 'export CHSBEDTOOLSPATH='$RUNDIR'/bedtools' >>~/.bashrc || exit 1
+echo 'export CHSTMPPATH=/tmp' >>~/.bashrc || exit 1
+echo 'export PERL5LIB=$PERL5LIB:'$RUNDIR >>~/.bashrc || exit 1
 
 ## Get MACS
-pip install --root=$RUNDIR"/macs_2.1.0.20150731" -U MACS2==2.1.0.20150731
-MACSBINfolder=`find -name 'macs2' |perl -pi -e 's/^\.(.+)macs2/$ENV{PWD}.$1/e'`
-MACSLIBfolder=`find -name 'dist-packages' |perl -pi -e 's/^./$ENV{PWD}/e'`
-echo 'export CHSMACSPATH='$MACSBINfolder >>~/.bashrc 
-echo 'export PYTHONPATH='$MACSLIBfolder':' >>~/.bashrc 
-source ~/.bashrc
+#pip install --root=$RUNDIR"/macs_2.1.0.20150731" -U MACS2==2.1.0.20150731 || exit 1
+MACSBINfolder=`find $RUNDIR -name 'macs2'` 
+MACSLIBfolder=`find $RUNDIR -name 'dist-packages'` 
+echo 'export CHSMACSPATH='$MACSBINfolder >>~/.bashrc || exit 1
+echo 'export PYTHONPATH='$MACSLIBfolder':'$PYTHONPATH >>~/.bashrc || exit 1
+. ~/.bashrc || exit 1
