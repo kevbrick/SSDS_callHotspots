@@ -108,7 +108,7 @@ unless (($ncis && -e $ncis) || $ncisRatioArg){
 # Pipe MACS commands to run script unless specified not to
 unless ($noCalls){
 	print SCRIPT 'ratio=`perl '.$CHSPATH.'/getNCISratio.pl '.$ncis.'`'."\n";
-	print SCRIPT 'python2.7 '.$CHSMACSPATH."/macs2 callpeak --ratio \$ratio -g $gSz -t $tUniq -c $cUniq --bw 1000 --keep-dup all --slocal 5000 --name $name >$oFile 2>$eFile\n";
+	print SCRIPT 'python2.7 '.$CHSMACSPATH." callpeak --ratio \$ratio -g $gSz -t $tUniq -c $cUniq --bw 1000 --keep-dup all --slocal 5000 --name $name >$oFile 2>$eFile\n";
 }
 
 # Pipe blacklist filter to run script if required
