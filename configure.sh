@@ -45,7 +45,8 @@ MACSLIBfolder=`find $RUNDIR -name 'dist-packages'`
 
 ## Add environment vars to .bashrc
 for thisBASHRC in `find /home -name '.bashrc'`; do
-	echo '## VARIABLES FOR callHotspots SSDS pipeline' >$thisBASHRC || exit 1
+	echo ' ' >>$thisBASHRC || exit 1
+	echo '## VARIABLES FOR callHotspots SSDS pipeline' >>$thisBASHRC || exit 1
 	echo 'export CHSPATH='$RUNDIR >>$thisBASHRC || exit 1
 	echo 'export CHSNCISPATH='$RUNDIR'/NCIS' >>$thisBASHRC || exit 1
 	echo 'export CHSBEDTOOLSPATH='$RUNDIR'/bedtools' >>$thisBASHRC || exit 1
