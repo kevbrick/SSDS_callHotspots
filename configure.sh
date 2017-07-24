@@ -47,14 +47,17 @@ echo 'export CHSTMPPATH=/tmp' >>$RUNDIR'/.callSSDSPeaksPaths.sh' || exit 1
 echo 'export PERL5LIB=$PERL5LIB:'$RUNDIR >>$RUNDIR'/.callSSDSPeaksPaths.sh' || exit 1
 echo 'export PATH=$PATH:'$RUNDIR >>$RUNDIR'/.callSSDSPeaksPaths.sh' || exit 1
 
-echo 'sh '$RUNDIR'/.callSSDSPeaksPaths.sh' >>~/.bashrc || exit 1
-
 ## Get MACS
 pip install --root=$RUNDIR"/macs_2.1.0.20150731" -U MACS2==2.1.0.20150731 || exit 1
 MACSBINfolder=`find $RUNDIR -name 'macs2'` 
 MACSLIBfolder=`find $RUNDIR -name 'dist-packages'` 
-echo 'export CHSMACSPATH='$MACSBINfolder |perl -pi -e 's/\/macs2//' >>~/.bashrc || exit 1
-echo 'export PYTHONPATH='$MACSLIBfolder':'$PYTHONPATH >>~/.bashrc || exit 1
+echo 'export CHSMACSPATH='$MACSBINfolder |perl -pi -e 's/\/macs2//' >>$RUNDIR'/.callSSDSPeaksPaths.sh' || exit 1
+echo 'export PYTHONPATH='$MACSLIBfolder':'$PYTHONPATH >>$RUNDIR'/.callSSDSPeaksPaths.sh' || exit 1
+
+echo 'sh '$RUNDIR'/.callSSDSPeaksPaths.sh' >>~/.bashrc || exit 1
+
+chmod a+x $RUNDIR/.callSSDSPeaksPaths.sh
+sh $RUNDIR/.callSSDSPeaksPaths.sh
 
 . ~/.bashrc || exit 1
 
