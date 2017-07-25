@@ -44,7 +44,7 @@ MACSBINfolder=`find $RUNDIR -name 'macs2' |perl -pi -e 's/\/macs2//'`
 MACSLIBfolder=`find $RUNDIR -name 'dist-packages'` 
 
 ## Add environment vars to .bashrc
-for thisBASHRC in `find /home -maxdepth 2 -name '.bashrc' '/root/.bashrc'`; do
+for thisBASHRC in `find /home -maxdepth 2 -name '.bashrc'` '/root/.bashrc'; do
 	echo ' ' >>$thisBASHRC || exit 1
 	echo '## VARIABLES FOR callHotspots SSDS pipeline' >>$thisBASHRC || exit 1
 	echo 'export CHSPATH='$RUNDIR >>$thisBASHRC || exit 1
