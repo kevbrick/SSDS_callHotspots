@@ -1,3 +1,6 @@
+## NOTE: 
+## This repo is no longer maintained and has been deprecated. It has been superceded by an implementation in nextflow (kevbrick/callSSDSpeaks)
+
 INSTALLATION:
 The easiest way to install the SSDS hotspot calling pipeline is to simply run the configuration script located in the folder downloaded from github: 
 >cd callHotspotsSSDS
